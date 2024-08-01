@@ -5,7 +5,6 @@
 #include <emitsoundany>
 #include <clientprefs>
 #include <multicolors>
-#include <soundlib>
 
 #define CONFIG_PATH "data/vip/modules/vsp.ini"
 #define DELAY 30.0
@@ -20,7 +19,6 @@ enum struct sound_t {
 	char sName[128];
 	char sPath[128];
 	char sChatText[128];	// Текст который будет в чате
-	float fLength;			// Длительность звука
 	bool bAdmin;			// Звук будет доступен только ROOT админам
 }
 
@@ -28,8 +26,6 @@ sound_t hSoundList[MAX_SOUNDS];
 
 bool 
 	g_bEnabled[MAXPLAYERS+1];
-
-int iStartSound, iEndSound;
 
 int iLastUsedSound[MAXPLAYERS + 1];
 
@@ -138,7 +134,7 @@ public Action Command_Menu(int client, int args) {
 	if(!client)
 		return Plugin_Handled;
 
-	if(VIP_GetClientFeatureStatus(client, "VoiceSoundPlayer") == NO_ACCESS)
+	if(VIP_GetClientFeatureStatus(client, "VoiceSoundPlayer") == NO_ACCESS && !IsRootAdmin(client))
 	{
 		CPrintToChat(client, "%T", "NO_ACCESS", client);
 
@@ -150,20 +146,16 @@ public Action Command_Menu(int client, int args) {
 	return Plugin_Handled;
 }
 
+bool IsRootAdmin(int client)
+{
+	return !!(GetUserFlagBits(client) & ADMFLAG_ROOT);
+}
+
 public int Menu_Handler(Menu menu, MenuAction action, int param, int param2) {
 	if(action == MenuAction_Select) {
-		int currentTime = GetTime();
-		
-		if(currentTime >= iStartSound && currentTime < iEndSound)
+		if(GetTime() - iLastUsedSound[param] < DELAY && !IsRootAdmin(param))
 		{
-			CPrintToChat(param, "%T", "SoundIsPlaying", param);
-
-			return 0;
-		}
-		
-		if(currentTime - iLastUsedSound[param] < DELAY)
-		{
-			CPrintToChat(param, "%T", "Wait", param, DELAY - (currentTime - iLastUsedSound[param]));
+			CPrintToChat(param, "%T", "Wait", param, DELAY - (GetTime() - iLastUsedSound[param]));
 
 			return 0;
 		}
@@ -183,8 +175,6 @@ public int Menu_Handler(Menu menu, MenuAction action, int param, int param2) {
 			CPrintToChat(i, "%T", "Play", i, param, hSoundList[iPos].sChatText);
 		}
 
-		iStartSound = GetTime();
-		iEndSound = GetTime() + RoundToNearest(hSoundList[iPos].fLength);
 		iLastUsedSound[param] = GetTime();
 		
 		Command_Menu(param, 0);
@@ -204,8 +194,6 @@ void LoadConfig() {
 	if(!KvZc.ImportFromFile(Buffer)) SetFailState("Конфиг %s отсутствует", Buffer);
 
 	KvZc.Rewind();
-	
-	Handle hSound;
 
 	if(KvZc.GotoFirstSubKey())
 	{
@@ -214,10 +202,6 @@ void LoadConfig() {
 			KvZc.GetSectionName(hSoundList[i].sName, sizeof(sound_t::sName));
 
 			KvZc.GetString("path", hSoundList[i].sPath, sizeof(sound_t::sPath));
-			
-			if((hSound = OpenSoundFile(hSoundList[i].sPath)) != INVALID_HANDLE)
-				hSoundList[i].fLength = GetSoundLengthFloat(hSound);
-			
 			KvZc.GetString("chat", hSoundList[i].sChatText, sizeof(sound_t::sChatText));
 			hSoundList[i].bAdmin = !!KvZc.GetNum("admin", 0);
 				
