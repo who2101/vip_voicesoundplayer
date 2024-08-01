@@ -5,6 +5,7 @@
 #include <emitsoundany>
 #include <clientprefs>
 #include <multicolors>
+#include <soundlib>
 
 #define CONFIG_PATH "data/vip/modules/vsp.ini"
 #define DELAY 30.0
@@ -19,14 +20,16 @@ enum struct sound_t {
 	char sName[128];
 	char sPath[128];
 	char sChatText[128];	// Текст который будет в чате
+	float fLength;			// Длительность звука
 	bool bAdmin;			// Звук будет доступен только ROOT админам
 }
 
-sound_t hSoundList[65];
+sound_t hSoundList[MAX_SOUNDS];
 
 bool 
-	g_bEnabled[MAXPLAYERS+1],
-	g_bUsed[MAXPLAYERS+1];
+	g_bEnabled[MAXPLAYERS+1];
+
+int iStartSound, iEndSound;
 
 int iLastUsedSound[MAXPLAYERS + 1];
 
@@ -52,7 +55,7 @@ public void OnPluginStart()
 public void OnMapStart() {
 	char sBuff[192];
 
-	for (int i = 1; i <= 64; i++)
+	for (int i = 0; i < MAX_SOUNDS; i++)
 	{
 		if(hSoundList[i].sPath[0] == '\0')
 			continue;
@@ -85,11 +88,9 @@ public bool OnSelectItem(int client, const char[] sFeatureName) {
 	return false;
 }
 
-public void OnClientPutInServer(int client) {
-	g_bUsed[client] = false;
-}
-
 public void OnClientCookiesCached(int client) {
+	iLastUsedSound[client] = 0;
+	
 	char cookie[32];
 	GetClientCookie(client, gH_Cookie, cookie, sizeof(cookie));
 
@@ -103,10 +104,7 @@ public void OnClientCookiesCached(int client) {
 
 public Action Command_Disable(int client, int args) {
 	g_bEnabled[client] = !g_bEnabled[client];
-
-	if(g_bEnabled[client])
-		SetClientCookie(client, gH_Cookie, "1");
-	else SetClientCookie(client, gH_Cookie, "0");
+	SetClientCookie(client, gH_Cookie, g_bEnabled[client] ? "1":"0");
 
 	CPrintToChat(client, "%T", g_bEnabled[client] ? "Enable" : "Disable", client);
 
@@ -120,7 +118,7 @@ void ShowSNDMenu(int client) {
 
 	bool admin = CheckCommandAccess(client, NULL_STRING, ADMFLAG_ROOT, true);
 
-	for (int i = 1; i <= 64; i++) {
+	for (int i = 0; i < MAX_SOUNDS; i++) {
 		if(hSoundList[i].sName[0] == '\0')
 			continue;
 
@@ -154,9 +152,18 @@ public Action Command_Menu(int client, int args) {
 
 public int Menu_Handler(Menu menu, MenuAction action, int param, int param2) {
 	if(action == MenuAction_Select) {
-		if(GetTime() - iLastUsedSound[param] < DELAY)
+		int currentTime = GetTime();
+		
+		if(currentTime >= iStartSound && currentTime < iEndSound)
 		{
-			CPrintToChat(param, "%T", "Wait", param, DELAY - (GetTime() - iLastUsedSound[param]));
+			CPrintToChat(param, "%T", "SoundIsPlaying", param);
+
+			return 0;
+		}
+		
+		if(currentTime - iLastUsedSound[param] < DELAY)
+		{
+			CPrintToChat(param, "%T", "Wait", param, DELAY - (currentTime - iLastUsedSound[param]));
 
 			return 0;
 		}
@@ -166,18 +173,21 @@ public int Menu_Handler(Menu menu, MenuAction action, int param, int param2) {
 
 		int iPos = StringToInt(item);
 
-		for(int i = 1; i <= MaxClients; i++) {
-			if(IsClientInGame(i) && !IsFakeClient(i)) {
-				if(g_bEnabled[i])
-				{
-					EmitSoundToClientAny(i, hSoundList[iPos].sPath);
-				}
-				
-				CPrintToChat(i, "%T", "Play", i, param, hSoundList[iPos].sChatText);
+		for(int i = 1; i <= MaxClients; i++) if(IsClientInGame(i) && !IsFakeClient(i)) 
+		{
+			if(g_bEnabled[i])
+			{
+				EmitSoundToClientAny(i, hSoundList[iPos].sPath);
 			}
+				
+			CPrintToChat(i, "%T", "Play", i, param, hSoundList[iPos].sChatText);
 		}
-		
+
+		iStartSound = GetTime();
+		iEndSound = GetTime() + RoundToNearest(hSoundList[iPos].fLength);
 		iLastUsedSound[param] = GetTime();
+		
+		Command_Menu(param, 0);
 	}
 	if(action == MenuAction_End)
 		delete menu;
@@ -192,23 +202,27 @@ void LoadConfig() {
 	KeyValues KvZc = new KeyValues("Sound");
 
 	if(!KvZc.ImportFromFile(Buffer)) SetFailState("Конфиг %s отсутствует", Buffer);
-	else
+
+	KvZc.Rewind();
+	
+	Handle hSound;
+
+	if(KvZc.GotoFirstSubKey())
 	{
-		KvZc.Rewind();
+		int i = 0;
+		do {
+			KvZc.GetSectionName(hSoundList[i].sName, sizeof(sound_t::sName));
 
-		if(KvZc.GotoFirstSubKey())
-		{
-			int i = 1;
-			do {
-				KvZc.GetSectionName(hSoundList[i].sName, sizeof(sound_t::sName));
-
-				KvZc.GetString("path", hSoundList[i].sPath, sizeof(sound_t::sPath));
-				KvZc.GetString("chat", hSoundList[i].sChatText, sizeof(sound_t::sChatText));
-				hSoundList[i].bAdmin = !!KvZc.GetNum("admin", 0);
-					
-				i++;
-			} while(KvZc.GotoNextKey());
-		}
+			KvZc.GetString("path", hSoundList[i].sPath, sizeof(sound_t::sPath));
+			
+			if((hSound = OpenSoundFile(hSoundList[i].sPath)) != INVALID_HANDLE)
+				hSoundList[i].fLength = GetSoundLengthFloat(hSound);
+			
+			KvZc.GetString("chat", hSoundList[i].sChatText, sizeof(sound_t::sChatText));
+			hSoundList[i].bAdmin = !!KvZc.GetNum("admin", 0);
+				
+			i++;
+		} while(KvZc.GotoNextKey());
 	}
 
 	delete KvZc;

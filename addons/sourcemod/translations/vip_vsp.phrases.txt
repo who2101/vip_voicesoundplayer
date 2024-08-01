@@ -32,4 +32,9 @@
 		"ru"	"{1} включил звук {2}"
 		"en"	"{1} played sound {2}"
 	}
+	"SoundIsPlaying"
+	{
+		"ru"	"Сейчас включён звук. Подождите."
+		"en"	"The sound is on now. Wait."
+	}
 }
