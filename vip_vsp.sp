@@ -19,6 +19,7 @@ enum struct sound_t {
 	char sName[128];
 	char sPath[128];
 	char sChatText[128];	// Текст который будет в чате
+	float fLength;			// Длительность звука
 	bool bAdmin;			// Звук будет доступен только ROOT админам
 }
 
@@ -27,7 +28,8 @@ sound_t hSoundList[MAX_SOUNDS];
 bool 
 	g_bEnabled[MAXPLAYERS+1];
 
-int iLastUsedSound[MAXPLAYERS + 1];
+int iLastUsedSound[MAXPLAYERS + 1],
+	iStartSound, iEndSound;
 
 Handle gH_Cookie;
 
@@ -134,7 +136,7 @@ public Action Command_Menu(int client, int args) {
 	if(!client)
 		return Plugin_Handled;
 
-	if(VIP_GetClientFeatureStatus(client, "VoiceSoundPlayer") == NO_ACCESS && !IsRootAdmin(client))
+	if(VIP_GetClientFeatureStatus(client, "VoiceSoundPlayer") == NO_ACCESS)
 	{
 		CPrintToChat(client, "%T", "NO_ACCESS", client);
 
@@ -146,16 +148,20 @@ public Action Command_Menu(int client, int args) {
 	return Plugin_Handled;
 }
 
-bool IsRootAdmin(int client)
-{
-	return !!(GetUserFlagBits(client) & ADMFLAG_ROOT);
-}
-
 public int Menu_Handler(Menu menu, MenuAction action, int param, int param2) {
 	if(action == MenuAction_Select) {
-		if(GetTime() - iLastUsedSound[param] < DELAY && !IsRootAdmin(param))
+		int currentTime = GetTime();
+		
+		if(currentTime >= iStartSound && currentTime < iEndSound)
 		{
-			CPrintToChat(param, "%T", "Wait", param, DELAY - (GetTime() - iLastUsedSound[param]));
+			CPrintToChat(param, "%T", "SoundIsPlaying", param);
+
+			return 0;
+		}
+		
+		if(currentTime - iLastUsedSound[param] < DELAY)
+		{
+			CPrintToChat(param, "%T", "Wait", param, DELAY - (currentTime - iLastUsedSound[param]));
 
 			return 0;
 		}
@@ -175,7 +181,9 @@ public int Menu_Handler(Menu menu, MenuAction action, int param, int param2) {
 			CPrintToChat(i, "%T", "Play", i, param, hSoundList[iPos].sChatText);
 		}
 
-		iLastUsedSound[param] = GetTime();
+		iLastUsedSound[param] = currentTime;
+		iStartSound = currentTime;
+		iEndSound = iStartSound + RoundToNearest(hSoundList[iPos].fLength);
 		
 		Command_Menu(param, 0);
 	}
