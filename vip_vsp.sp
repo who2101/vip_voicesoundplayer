@@ -5,6 +5,7 @@
 #include <emitsoundany>
 #include <clientprefs>
 #include <multicolors>
+#include <soundlib>
 
 #define CONFIG_PATH "data/vip/modules/vsp.ini"
 #define DELAY 30.0
@@ -205,12 +206,17 @@ void LoadConfig() {
 
 	if(KvZc.GotoFirstSubKey())
 	{
+		Handle hSound;
 		int i = 0;
 		do {
 			KvZc.GetSectionName(hSoundList[i].sName, sizeof(sound_t::sName));
 
 			KvZc.GetString("path", hSoundList[i].sPath, sizeof(sound_t::sPath));
 			KvZc.GetString("chat", hSoundList[i].sChatText, sizeof(sound_t::sChatText));
+			
+			if((hSound = OpenSoundFile(hSoundList[i].sPath)) != INVALID_HANDLE)
+				hSoundList[i].fLength = GetSoundLengthFloat(hSound);
+			
 			hSoundList[i].bAdmin = !!KvZc.GetNum("admin", 0);
 				
 			i++;
