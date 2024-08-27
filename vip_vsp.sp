@@ -8,7 +8,6 @@
 #include <soundlib>
 
 #define CONFIG_PATH "data/vip/modules/vsp.ini"
-#define DELAY 30.0
 #define MAX_SOUNDS 64
 
 public Plugin myinfo = {
@@ -17,11 +16,11 @@ public Plugin myinfo = {
 };
 
 enum struct sound_t {
-	char sName[128];
-	char sPath[128];
-	char sChatText[128];	// Текст который будет в чате
-	float fLength;			// Длительность звука
-	bool bAdmin;			// Звук будет доступен только ROOT админам
+	char 	sName[128];			// Название звука в меню
+	char 	sPath[128];			// Путь к звуку
+	char 	sChatText[128];		// Название звука в чате
+	float 	fLength;			// Длительность звука
+	bool 	bAdmin;				// Звук будет доступен только ROOT админам
 }
 
 sound_t hSoundList[MAX_SOUNDS];
@@ -34,25 +33,37 @@ int iLastUsedSound[MAXPLAYERS + 1],
 
 Handle gH_Cookie;
 
+ConVar hSoundDelay;
+
 public void OnPluginStart()
 {
 	LoadTranslations("vip_core.phrases.txt");
 	LoadTranslations("vip_vsp.phrases.txt");
-	
+
 	gH_Cookie = RegClientCookie("vsp_enabled", "enabled cookies", CookieAccess_Protected);
+	
+	hSoundDelay = CreateConVar("vsp_sound_delay", "30.0");
 
 	RegConsoleCmd("sm_snd", Command_Menu);
 	RegConsoleCmd("sm_offsnd", Command_Disable);
-
-	LoadConfig();
+	
+	HookEvent("round_start", OnRoundEvent);
+	HookEvent("round_end", OnRoundEvent);
 
 	for(int i = 1; i <= MaxClients; i++)
-		if(IsClientInGame(i) && !IsFakeClient(i))
+		if(IsClientInGame(i) && !IsFakeClient(i) && AreClientCookiesCached(i))
 			OnClientCookiesCached(i);
+}
+
+public void OnRoundEvent(Event event, const char[] name, bool dontBroadcast)
+{
+	iEndSound = GetTime();
 }
 
 public void OnMapStart() {
 	char sBuff[192];
+	
+	LoadConfig();
 
 	for (int i = 0; i < MAX_SOUNDS; i++)
 	{
@@ -82,7 +93,7 @@ public int OnDrawItem(int iClient, const char[] sFeatureName, int iStyle)
 }
 
 public bool OnSelectItem(int client, const char[] sFeatureName) {
-	ShowSNDMenu(client);
+	ShowMenu(client);
 
 	return false;
 }
@@ -110,7 +121,7 @@ public Action Command_Disable(int client, int args) {
 	return Plugin_Handled;
 }
 
-void ShowSNDMenu(int client) {
+void ShowMenu(int client) {
 	Menu menu = new Menu(Menu_Handler);
 
 	menu.SetTitle("%T\n ", "PhraseMenu", client);
@@ -144,7 +155,7 @@ public Action Command_Menu(int client, int args) {
 		return Plugin_Handled;
 	}
 
-	ShowSNDMenu(client);
+	ShowMenu(client);
 
 	return Plugin_Handled;
 }
@@ -160,9 +171,9 @@ public int Menu_Handler(Menu menu, MenuAction action, int param, int param2) {
 			return 0;
 		}
 		
-		if(currentTime - iLastUsedSound[param] < DELAY)
+		if(currentTime - iLastUsedSound[param] < hSoundDelay.FloatValue)
 		{
-			CPrintToChat(param, "%T", "Wait", param, DELAY - (currentTime - iLastUsedSound[param]));
+			CPrintToChat(param, "%T", "Wait", param, hSoundDelay.FloatValue - (currentTime - iLastUsedSound[param]));
 
 			return 0;
 		}
