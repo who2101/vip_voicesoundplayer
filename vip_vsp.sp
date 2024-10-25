@@ -226,7 +226,10 @@ void LoadConfig() {
 			KvZc.GetString("chat", hSoundList[i].sChatText, sizeof(sound_t::sChatText));
 			
 			if((hSound = OpenSoundFile(hSoundList[i].sPath)) != INVALID_HANDLE)
+			{
 				hSoundList[i].fLength = GetSoundLengthFloat(hSound);
+				delete hSound;
+			}
 			
 			hSoundList[i].bAdmin = !!KvZc.GetNum("admin", 0);
 				
